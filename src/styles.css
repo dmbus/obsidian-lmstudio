@@ -1,0 +1,122 @@
+/* Obsidian LM Studio Plugin Styles */
+
+/* Force select element text colors to be visible */
+.lm-studio-documents select,
+.lm-studio-documents .modal select {
+	color: var(--text-normal) !important;
+}
+
+.search-dropdown {
+	position: absolute;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	max-height: 200px;
+	overflow-y: auto;
+	z-index: 1000;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.search-dropdown-item {
+	padding: 10px;
+	cursor: pointer;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.search-dropdown-item:last-child {
+	border-bottom: none;
+}
+
+.search-dropdown-item:hover {
+	background: var(--background-modifier-border);
+}
+
+.search-dropdown-item .filename {
+	font-weight: 600;
+}
+
+.templates-list {
+	margin: 1em 0;
+}
+
+.template-item {
+	padding: 12px;
+	margin: 8px 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+}
+
+.template-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 8px;
+}
+
+.template-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.current-content {
+	background: var(--background-secondary);
+	padding: 12px;
+	border-radius: 6px;
+	max-height: 150px;
+	overflow-y: auto;
+	white-space: pre-wrap;
+	font-size: 0.9em;
+}
+
+.modal-content {
+	padding: 20px;
+}
+
+.input-group {
+	margin: 1em 0;
+}
+
+.input-group label {
+	display: block;
+	margin-bottom: 0.25em;
+	font-weight: 600;
+}
+
+.input-group input,
+.input-group select,
+.input-group textarea {
+	width: 100%;
+	padding: 0.5em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+.input-group textarea {
+	font-family: monospace;
+	resize: vertical;
+}
+
+.button-group {
+	display: flex;
+	gap: 0.5em;
+	margin-top: 1em;
+}
+
+.button-group button {
+	padding: 0.5em 1em;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.button-group button.primary {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.button-group button.secondary {
+	background: var(--background-modifier-border);
+	color: var(--text-normal);
+}

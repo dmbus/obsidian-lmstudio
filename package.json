@@ -1,0 +1,33 @@
+{
+  "name": "obsidian-lmstudio",
+  "version": "1.0.0",
+  "description": "Use local AI to write, edit, and combine markdown documents in your vault.",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs --production",
+    "test": "vitest",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "ai",
+    "llm",
+    "lm-studio",
+    "copilot",
+    "productivity",
+    "writing"
+  ],
+  "author": "Dmitri Bushkov",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "esbuild": "^0.19.0",
+    "obsidian": "latest",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}

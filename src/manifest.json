@@ -1,0 +1,13 @@
+{
+	"id": "lm-studio-copilot",
+	"name": "LM Studio Copilot",
+	"version": "1.0.0",
+	"minAppVersion": "1.5.0",
+	"description": "Use local AI to write, edit, and combine markdown documents in your vault.",
+	"author": "Dmitri Bushkov",
+	"authorUrl": "https://github.com/dmbus",
+	"fundingUrl": "https://github.com/sponsors/dmbus",
+	"isDesktopOnly": true,
+	"js": "main.js",
+	"styles": ["styles.css"]
+}
