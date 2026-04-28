@@ -22,6 +22,7 @@ export class SettingsTab extends PluginSettingTab {
 		this.displayLmStudioSettings(containerEl);
 		this.displayDocumentOutputSettings(containerEl);
 		this.displayVaultIndexingSettings(containerEl);
+		this.displaySummaryCacheSettings(containerEl);
 		this.displayVaultTemplates(containerEl);
 		this.displaySystemSettings(containerEl);
 		this.displayPromptTemplates(containerEl);
@@ -209,6 +210,57 @@ export class SettingsTab extends PluginSettingTab {
 					btn.setButtonText("Re-index");
 					btn.setDisabled(false);
 				}
+			});
+		});
+	}
+
+	private displaySummaryCacheSettings(container: HTMLElement): void {
+		container.createEl("h3", { text: "Summary Cache" });
+
+		const cache = this.plugin.getSummaryCache();
+		const individualCount = Object.keys(cache.individualSummaries).length;
+		const folderCount = Object.keys(cache.folderSummaries).length;
+
+		const statusDiv = container.createDiv();
+		statusDiv.style.cssText = "margin-bottom: 12px; padding: 8px; background: var(--background-secondary); border-radius: 4px; font-size: 0.9em;";
+		statusDiv.textContent = `Cached: ${individualCount} individual summaries, ${folderCount} folder summaries`;
+
+		new Setting(container)
+			.setName("Summary Cache Max Size")
+			.setDesc("Maximum number of individual document summaries to cache")
+			.addText((text) => {
+				text.setValue(String(this.plugin.settings.summaryCacheMaxSize));
+				text.inputEl.style.width = "100px";
+				text.onChange(async (value) => {
+					const num = parseInt(value);
+					if (!isNaN(num) && num > 0) {
+						this.plugin.settings.summaryCacheMaxSize = num;
+						await this.plugin.saveSettings();
+					}
+				});
+			});
+
+		new Setting(container)
+			.setName("Summary Cache Expiration (days)")
+			.setDesc("Summaries older than this will be regenerated (0 = never expire)")
+			.addText((text) => {
+				text.setValue(String(this.plugin.settings.summaryCacheExpirationDays));
+				text.inputEl.style.width = "100px";
+				text.onChange(async (value) => {
+					const num = parseInt(value);
+					if (!isNaN(num) && num >= 0) {
+						this.plugin.settings.summaryCacheExpirationDays = num;
+						await this.plugin.saveSettings();
+					}
+				});
+			});
+
+		new Setting(container).setName("Clear Summary Cache").addButton((btn) => {
+			btn.setButtonText("Clear Cache");
+			btn.onClick(async () => {
+				this.plugin.clearSummaryCache();
+				new Notice("Summary cache cleared");
+				this.display();
 			});
 		});
 	}

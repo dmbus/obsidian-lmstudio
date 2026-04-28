@@ -1,8 +1,10 @@
 import { Plugin, Notice, TFile } from "obsidian";
 import { VaultIndexer } from "./vault/VaultIndexer";
-import { DocumentModal } from "./views/DocumentModal";
-import { VaultAssistantModal } from "./views/VaultAssistantModal";
+import { SummaryCache, SummaryCacheService, VaultSummaryCache } from "./vault/SummaryCache";
+import { AIAssistantModal } from "./views/AIAssistantModal";
 import { SettingsTab } from "./settings/SettingsTab";
+import { JobQueueManager } from "./jobs/JobQueueManager";
+import { JobHistoryModal } from "./jobs/JobHistoryModal";
 
 interface PromptTemplate {
 	id: string;
@@ -31,6 +33,8 @@ interface LmStudioSettings {
 	periodicReindex: "off" | "daily" | "weekly";
 	indexFolders: string[];
 	vaultTemplates: VaultTemplate[];
+	summaryCacheMaxSize: number;
+	summaryCacheExpirationDays: number;
 }
 
 const DEFAULT_SYSTEM_PROMPT = `You are assisting with Obsidian vault documents. Rules:
@@ -79,9 +83,11 @@ const DEFAULT_VAULT_TEMPLATES: VaultTemplate[] = [
 	{
 		id: "find-connections",
 		name: "Find Connections",
-		content: `Find all documents related to: {{topic}}
+		content: `Analyze the documents in the current scope to find meaningful connections.
+Identify instances where one document mentions topics, concepts, or entities that are the primary subject of another document.
+For example, if one document discusses "AI Engineering" and there is another note titled "AI Engineering", suggest a link.
 Suggest wikilinks between them using the format [[Document Name|display text]] and explain why they connect.
-Create a summary document listing all connections found.`,
+Focus on creating a network of related thoughts across the vault.`,
 	},
 	{
 		id: "answer-question",
@@ -120,15 +126,29 @@ const DEFAULT_SETTINGS: LmStudioSettings = {
 	indexFolders: [],
 	vaultTemplates: DEFAULT_VAULT_TEMPLATES,
 	logLevel: "INFO",
+	summaryCacheMaxSize: 1000,
+	summaryCacheExpirationDays: 90,
 };
 
 export default class LMStudioCopilotPlugin extends Plugin {
 	settings: LmStudioSettings;
 	indexer: VaultIndexer;
+	jobQueueManager!: JobQueueManager;
+	private statusBarEl: HTMLElement | null = null;
+	private jobStatusEl: HTMLElement | null = null;
+	private summaryCache: SummaryCache;
+	private summaryCacheService: SummaryCacheService;
 
 	async onload() {
 		this.indexer = new VaultIndexer(this.app);
+		this.summaryCacheService = new SummaryCacheService();
+		this.summaryCache = this.summaryCacheService.createEmptyCache();
 		await this.loadSettings();
+
+		this.jobQueueManager = new JobQueueManager(this);
+		await this.jobQueueManager.loadState();
+		this.registerStatusBar();
+
 		this.addSettingTab(new SettingsTab(this.app, this));
 		this.registerCommands();
 		this.setupRibbon();
@@ -138,52 +158,65 @@ export default class LMStudioCopilotPlugin extends Plugin {
 		}
 	}
 
-	private setupRibbon() {
-		this.addRibbonIcon("file-text", "AI Documents", () => {
-			new DocumentModal(this.app, this).open();
+	private registerStatusBar(): void {
+		this.statusBarEl = this.addStatusBarItem();
+		this.jobStatusEl = this.statusBarEl.createEl("div", {
+			cls: "job-queue-status",
+		});
+		this.jobStatusEl.style.cssText = "cursor: pointer; padding: 4px 8px; border-radius: 4px;";
+		this.jobStatusEl.onclick = () => {
+			new JobHistoryModal(this.app, this.jobQueueManager).open();
+		};
+
+		this.jobQueueManager.onStatusChange((jobs) => {
+			this.updateStatusBar(jobs);
 		});
 
-		this.addRibbonIcon("brain", "Vault Assistant", () => {
-			new VaultAssistantModal(this.app, this).open();
+		this.updateStatusBar(this.jobQueueManager.getDisplayJobs());
+	}
+
+	private updateStatusBar(jobs: any[]): void {
+		if (!this.jobStatusEl) return;
+
+		const runningJob = jobs.find((j) => j.status === "running");
+		const pendingCount = jobs.filter((j) => j.status === "pending").length;
+		const hasErrors = jobs.some((j) => j.status === "failed");
+
+		if (runningJob) {
+			const progress = runningJob.progress?.message || runningJob.description;
+			if (pendingCount > 0) {
+				this.jobStatusEl.textContent = `🤖 ${progress} (+${pendingCount} queued)`;
+			} else {
+				this.jobStatusEl.textContent = `🤖 ${progress}`;
+			}
+			this.jobStatusEl.style.color = "var(--text-accent)";
+		} else if (pendingCount > 0) {
+			this.jobStatusEl.textContent = `📋 ${pendingCount} job${pendingCount > 1 ? "s" : ""} queued`;
+			this.jobStatusEl.style.color = "var(--text-muted)";
+		} else if (hasErrors) {
+			this.jobStatusEl.textContent = "⚠️ Job failed";
+			this.jobStatusEl.style.color = "var(--text-error)";
+		} else {
+			this.jobStatusEl.textContent = "";
+			this.jobStatusEl.style.display = "none";
+		}
+
+		if (this.jobStatusEl.textContent) {
+			this.jobStatusEl.style.display = "inline-flex";
+		}
+	}
+
+	private setupRibbon() {
+		this.addRibbonIcon("brain", "AI Assistant", () => {
+			new AIAssistantModal(this.app, this).open();
 		});
 	}
 
 	private registerCommands() {
 		this.addCommand({
-			id: "open-document-ai",
-			name: "Open AI Document Assistant",
-			callback: () => new DocumentModal(this.app, this).open(),
-		});
-
-		this.addCommand({
-			id: "write-new-document",
-			name: "Write new document with AI",
-			callback: () => new DocumentModal(this.app, this, "write").open(),
-		});
-
-		this.addCommand({
-			id: "edit-selected-document",
-			name: "Edit document with AI",
-			callback: async () => {
-				const file = this.app.workspace.getActiveFile();
-				if (!file) {
-					new Notice("No active file");
-					return;
-				}
-				new DocumentModal(this.app, this, "edit", file).open();
-			},
-		});
-
-		this.addCommand({
-			id: "combine-documents",
-			name: "Combine selected documents",
-			callback: () => new DocumentModal(this.app, this, "combine").open(),
-		});
-
-		this.addCommand({
-			id: "open-vault-assistant",
-			name: "Open Vault Assistant",
-			callback: () => new VaultAssistantModal(this.app, this).open(),
+			id: "open-ai-assistant",
+			name: "Open AI Assistant",
+			callback: () => new AIAssistantModal(this.app, this).open(),
 		});
 
 		this.addCommand({
@@ -222,14 +255,23 @@ export default class LMStudioCopilotPlugin extends Plugin {
 		if (!this.settings.vaultTemplates || this.settings.vaultTemplates.length === 0) {
 			this.settings.vaultTemplates = DEFAULT_VAULT_TEMPLATES;
 		} else {
-			const savedVaultTemplateIds = this.settings.vaultTemplates.map((t: any) => t.id);
+			// Update existing default templates to latest content, and add missing ones
+			const updatedTemplates = [...this.settings.vaultTemplates];
 			for (const defaultTemplate of DEFAULT_VAULT_TEMPLATES) {
-				if (!savedVaultTemplateIds.includes(defaultTemplate.id)) {
-					this.settings.vaultTemplates.push(defaultTemplate);
+				const existingIndex = updatedTemplates.findIndex(t => t.id === defaultTemplate.id);
+				if (existingIndex !== -1) {
+					// Update default template content if it hasn't been heavily customized (optional check)
+					// For now, let's force update the defaults to match the new requirements
+					updatedTemplates[existingIndex] = { ...defaultTemplate };
+				} else {
+					updatedTemplates.push(defaultTemplate);
 				}
 			}
+			
+			// Filter to only include templates that are in defaults or were manually added (if any were)
+			// But the current logic seems to want to stick strictly to defaults
 			const defaultTemplateIds = DEFAULT_VAULT_TEMPLATES.map((t) => t.id);
-			this.settings.vaultTemplates = this.settings.vaultTemplates.filter((t: any) =>
+			this.settings.vaultTemplates = updatedTemplates.filter((t: any) =>
 				defaultTemplateIds.includes(t.id)
 			);
 		}
@@ -237,11 +279,22 @@ export default class LMStudioCopilotPlugin extends Plugin {
 		if (data?.vaultIndex) {
 			await this.indexer.loadIndex(data);
 		}
+
+		if (data?.summaryCache) {
+			this.summaryCache = data.summaryCache;
+		} else {
+			this.summaryCache = this.summaryCacheService.createEmptyCache();
+		}
+
+		this.summaryCache = this.summaryCacheService.createEmptyCache();
+
+		this.summaryCacheService.pruneExpired(this.summaryCache, this.settings.summaryCacheExpirationDays);
+		this.summaryCacheService.pruneToSize(this.summaryCache, this.settings.summaryCacheMaxSize);
 	}
 
 	async saveSettings() {
 		const indexData = this.indexer.getDataForSave();
-		await this.saveData({ ...this.settings, ...indexData });
+		await this.saveData({ ...this.settings, ...indexData, summaryCache: this.summaryCache });
 	}
 
 	async testConnection(): Promise<boolean> {
@@ -426,5 +479,71 @@ export default class LMStudioCopilotPlugin extends Plugin {
 		const link = displayText ? `[[${linkText}|${displayText}]]` : `[[${linkText}]]`;
 		const content = await this.app.vault.read(file);
 		await this.app.vault.modify(file, content + "\n" + link);
+	}
+
+	getSummaryCache(): SummaryCache {
+		return this.summaryCache;
+	}
+
+	updateIndividualSummaryCache(documentPath: string, contentHash: string, summary: string): void {
+		this.summaryCache.individualSummaries[documentPath] = {
+			documentPath,
+			contentHash,
+			summary,
+			generatedAt: Date.now(),
+		};
+	}
+
+	updateFolderSummaryCache(folderPath: string, contentHashes: string[], summaryHash: string, summary: string): void {
+		this.summaryCache.folderSummaries[folderPath] = {
+			folderPath,
+			contentHashes: [...contentHashes],
+			summaryHash,
+			summary,
+			generatedAt: Date.now(),
+		};
+	}
+
+	updateVaultSummaryCache(folderSummaryHashes: string[], summary: string): void {
+		this.summaryCache.vaultSummary = {
+			folderSummaryHashes: [...folderSummaryHashes],
+			summary,
+			generatedAt: Date.now(),
+		};
+	}
+
+	isIndividualSummaryCacheValid(documentPath: string, currentContentHash: string): boolean {
+		const cached = this.summaryCache.individualSummaries[documentPath];
+		return this.summaryCacheService.isIndividualCacheValid(
+			cached,
+			currentContentHash,
+			this.settings.summaryCacheExpirationDays
+		);
+	}
+
+	canUseCachedFolderSummary(folderPath: string, currentHashes: string[]): boolean {
+		const cached = this.summaryCache.folderSummaries[folderPath];
+		return this.summaryCacheService.canUseCachedFolderSummary(
+			cached,
+			currentHashes,
+			this.settings.summaryCacheExpirationDays
+		);
+	}
+
+	canUseCachedVaultSummary(folderSummaryHashes: string[]): boolean {
+		return this.summaryCacheService.canUseCachedVaultSummary(
+			this.summaryCache.vaultSummary,
+			folderSummaryHashes,
+			this.settings.summaryCacheExpirationDays
+		);
+	}
+
+	generateSummaryHash(content: string): string {
+		return this.summaryCacheService.generateHash(content);
+	}
+
+	clearSummaryCache(): void {
+		this.summaryCache = this.summaryCacheService.createEmptyCache();
+		this.saveSettings();
 	}
 }

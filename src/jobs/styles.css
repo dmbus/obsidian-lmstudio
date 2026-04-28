@@ -1,0 +1,35 @@
+/* Job Queue Styles */
+
+.job-queue-status {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 8px;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 0.85em;
+}
+
+.job-queue-status:hover {
+	background: var(--background-modifier-hover);
+}
+
+.job-queue-status.idle {
+	display: none;
+}
+
+.job-queue-status.running {
+	color: var(--text-accent);
+}
+
+.job-queue-status.has-pending {
+	color: var(--text-muted);
+}
+
+.job-queue-status.complete {
+	color: var(--text-success);
+}
+
+.job-queue-status.has-errors {
+	color: var(--text-error);
+}
