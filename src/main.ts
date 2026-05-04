@@ -21,6 +21,7 @@ interface VaultTemplate {
 interface LmStudioSettings {
 	lmStudioUrl: string;
 	lmStudioModel: string;
+	availableModels: string[];
 	outputFolder: string;
 	outputLocation: "current" | "specific";
 	newNotePrefix: string;
@@ -112,8 +113,9 @@ Group related information and suggest meaningful wikilinks between connected doc
 ];
 
 const DEFAULT_SETTINGS: LmStudioSettings = {
-	lmStudioUrl: "http://127.0.0.1:1234/v1",
+	lmStudioUrl: "http://127.0.0.1:1234",
 	lmStudioModel: "local-model",
+	availableModels: [],
 	outputFolder: "AI Generated",
 	outputLocation: "specific",
 	newNotePrefix: "",
@@ -297,22 +299,61 @@ export default class LMStudioCopilotPlugin extends Plugin {
 		await this.saveData({ ...this.settings, ...indexData, summaryCache: this.summaryCache });
 	}
 
-	async testConnection(): Promise<boolean> {
+	async testConnection(): Promise<{ connected: boolean; availableModels: string[] }> {
 		try {
-			const response = await fetch(`${this.settings.lmStudioUrl}/models`, {
+			const baseUrl = this.settings.lmStudioUrl.replace(/\/$/, "");
+			const response = await fetch(`${baseUrl}/v1/models`, {
 				method: "GET",
+				headers: {
+					"Authorization": "Bearer lm-studio",
+				},
 			});
-			return response.ok;
-		} catch {
-			return false;
+
+			if (!response.ok) {
+				return { connected: false, availableModels: [] };
+			}
+
+			const data = await response.json();
+			console.log("LM Studio /models response:", JSON.stringify(data));
+			let availableModels: string[] = [];
+
+			if (Array.isArray(data)) {
+				availableModels = data;
+			} else if (Array.isArray(data.data)) {
+				availableModels = data.data.map((m: { id: string } | string) =>
+					typeof m === "string" ? m : m.id
+				);
+			} else if (data.models && Array.isArray(data.models)) {
+				availableModels = data.models.map((m: { id: string } | string) =>
+					typeof m === "string" ? m : m.id
+				);
+			} else if (data.object === "list" && Array.isArray(data.data)) {
+				availableModels = data.data.map((m: { id: string }) => m.id);
+			}
+
+			console.log("Parsed availableModels:", availableModels);
+
+			this.settings.availableModels = availableModels;
+			await this.saveSettings();
+
+			if (availableModels.length > 0 && !this.settings.lmStudioModel) {
+				this.settings.lmStudioModel = availableModels[0];
+				await this.saveSettings();
+			}
+
+			return { connected: true, availableModels };
+		} catch (e) {
+			console.error("testConnection error:", e);
+			return { connected: false, availableModels: [] };
 		}
 	}
 
 	async complete(prompt: string): Promise<string> {
 		const MAX_PROMPT_LENGTH = 100000;
 		const safePrompt = prompt.slice(0, MAX_PROMPT_LENGTH);
+		const baseUrl = this.settings.lmStudioUrl.replace(/\/$/, "");
 
-		const response = await fetch(`${this.settings.lmStudioUrl}/chat/completions`, {
+		const response = await fetch(`${baseUrl}/v1/chat/completions`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",

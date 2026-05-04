@@ -27,7 +27,8 @@ export class AIAssistantModal extends Modal {
 	private selectedFile: TFile | null = null;
 	
 	private modeSection!: HTMLDivElement;
-	private modeSelect!: HTMLSelectElement;
+	private modeButtons: HTMLButtonElement[] = [];
+	private currentMode: EditMode = "append";
 	
 	private promptTextarea!: HTMLTextAreaElement;
 	private templateSection!: HTMLDivElement;
@@ -128,11 +129,25 @@ export class AIAssistantModal extends Modal {
 		this.modeSection = container.createDiv();
 		this.modeSection.style.cssText = "margin-bottom: 16px; display: none;";
 		this.modeSection.createEl("label", { text: "Edit Mode" }).style.cssText = "display: block; margin-bottom: 8px; font-weight: 600;";
-		this.modeSelect = this.modeSection.createEl("select") as HTMLSelectElement;
-		this.modeSelect.style.cssText = "width: 100%; border-radius: 6px; font-size: 14px; background: var(--background-primary) !important; color: var(--text-normal) !important; border: 1px solid var(--background-modifier-border) !important;";
-		this.modeSelect.add(new Option("Edit/Rewrite", "edit"));
-		this.modeSelect.add(new Option("Append to existing", "append"));
-		this.modeSelect.add(new Option("Replace existing", "replace"));
+
+		const modeButtonGroup = this.modeSection.createDiv();
+		modeButtonGroup.style.cssText = "display: flex; gap: 8px;";
+
+		const modes: { mode: EditMode; label: string }[] = [
+			{ mode: "edit", label: "Edit" },
+			{ mode: "append", label: "Append" },
+			{ mode: "replace", label: "Replace" },
+		];
+
+		for (const { mode, label } of modes) {
+			const btn = modeButtonGroup.createEl("button", { text: label }) as HTMLButtonElement;
+			btn.style.cssText = "flex: 1; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; border: 1px solid var(--background-modifier-border); transition: all 0.15s ease;";
+			btn.dataset.mode = mode;
+			btn.onclick = () => this.onModeButtonClick(mode);
+			this.modeButtons.push(btn);
+		}
+
+		this.updateModeButtonStyles();
 
 		const promptSection = container.createDiv();
 		promptSection.style.cssText = "margin-bottom: 16px;";
@@ -204,6 +219,22 @@ export class AIAssistantModal extends Modal {
 		
 		this.onTemplateSelect();
 		this.updateStatus();
+	}
+
+	private onModeButtonClick(mode: EditMode) {
+		this.currentMode = mode;
+		this.updateModeButtonStyles();
+	}
+
+	private updateModeButtonStyles() {
+		for (const btn of this.modeButtons) {
+			const isActive = btn.dataset.mode === this.currentMode;
+			if (isActive) {
+				btn.style.cssText += "background: var(--interactive-accent); color: var(--text-on-accent); border-color: var(--interactive-accent);";
+			} else {
+				btn.style.cssText += "background: var(--background-secondary); color: var(--text-muted); border-color: var(--background-modifier-border);";
+			}
+		}
 	}
 
 	private onDocumentSearch(query: string, dropdown: HTMLElement) {
@@ -308,10 +339,12 @@ export class AIAssistantModal extends Modal {
 		this.variablesContainer.empty();
 		const matches = content.match(/\{\{(\w+)\}\}/g) || [];
 		const seen = new Set<string>();
+		const autoFilledVars = new Set(["content"]);
 		for (const match of matches) {
 			const varName = match.replace(/\{\{|\}\}/g, "");
 			if (seen.has(varName)) continue;
 			seen.add(varName);
+			if (autoFilledVars.has(varName)) continue;
 			const varContainer = this.variablesContainer.createDiv();
 			varContainer.style.cssText = "margin-bottom: 8px;";
 			varContainer.createEl("label", { text: varName }).style.cssText = "display: block; margin-bottom: 4px; font-size: 0.9em;";
@@ -378,7 +411,7 @@ export class AIAssistantModal extends Modal {
 				new Notice("Please select a document first");
 				return;
 			}
-			const mode = this.modeSelect.value as EditMode;
+			const mode = this.currentMode;
 			const filename = this.selectedFile ? this.selectedFile.name : this.plugin.settings.defaultFilename;
 			this.plugin.jobQueueManager.addJob("generate", {
 				prompt,

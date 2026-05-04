@@ -35,7 +35,7 @@ export class SettingsTab extends PluginSettingTab {
 			.setName("Server URL")
 			.setDesc("URL for your LM Studio server (include /v1)")
 			.addText((text) => {
-				text.setPlaceholder("http://localhost:1234/v1");
+				text.setPlaceholder("http://127.0.0.1:1234/v1");
 				text.setValue(this.plugin.settings.lmStudioUrl);
 				text.inputEl.style.width = "100%";
 				text.onChange(async (value) => {
@@ -44,30 +44,37 @@ export class SettingsTab extends PluginSettingTab {
 				});
 			});
 
+		new Setting(container).setName("Connect").addButton((btn) => {
+			btn.setButtonText("Connect");
+			btn.onClick(async () => {
+				btn.setButtonText("Connecting...");
+				btn.setDisabled(true);
+				const result = await this.plugin.testConnection();
+				btn.setButtonText("Connect");
+				btn.setDisabled(false);
+				if (result.connected) {
+					new Notice(`Connected! Found ${result.availableModels.length} models.`);
+					this.display();
+				} else {
+					new Notice("Connection failed");
+				}
+			});
+		});
+
 		new Setting(container)
-			.setName("Model Name")
-			.setDesc("Model to use for completions")
-			.addText((text) => {
-				text.setPlaceholder("local-model");
-				text.setValue(this.plugin.settings.lmStudioModel);
-				text.inputEl.style.width = "100%";
-				text.onChange(async (value) => {
+			.setName("Model")
+			.setDesc("Select a model from available models on server")
+			.addDropdown((dropdown) => {
+				dropdown.addOption("", "-- Select a model --");
+				for (const model of this.plugin.settings.availableModels) {
+					dropdown.addOption(model, model);
+				}
+				dropdown.setValue(this.plugin.settings.lmStudioModel);
+				dropdown.onChange(async (value) => {
 					this.plugin.settings.lmStudioModel = value;
 					await this.plugin.saveSettings();
 				});
 			});
-
-		new Setting(container).setName("Test Connection").addButton((btn) => {
-			btn.setButtonText("Test");
-			btn.onClick(async () => {
-				btn.setButtonText("Testing...");
-				btn.setDisabled(true);
-				const success = await this.plugin.testConnection();
-				btn.setButtonText("Test");
-				btn.setDisabled(false);
-				new Notice(success ? "Connection successful!" : "Connection failed");
-			});
-		});
 	}
 
 	private displayDocumentOutputSettings(container: HTMLElement): void {
