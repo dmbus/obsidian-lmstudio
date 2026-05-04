@@ -314,7 +314,6 @@ export default class LMStudioCopilotPlugin extends Plugin {
 			}
 
 			const data = await response.json();
-			console.log("LM Studio /models response:", JSON.stringify(data));
 			let availableModels: string[] = [];
 
 			if (Array.isArray(data)) {
@@ -331,8 +330,6 @@ export default class LMStudioCopilotPlugin extends Plugin {
 				availableModels = data.data.map((m: { id: string }) => m.id);
 			}
 
-			console.log("Parsed availableModels:", availableModels);
-
 			this.settings.availableModels = availableModels;
 			await this.saveSettings();
 
@@ -342,8 +339,7 @@ export default class LMStudioCopilotPlugin extends Plugin {
 			}
 
 			return { connected: true, availableModels };
-		} catch (e) {
-			console.error("testConnection error:", e);
+		} catch {
 			return { connected: false, availableModels: [] };
 		}
 	}
